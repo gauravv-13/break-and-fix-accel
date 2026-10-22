@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#6250d6"]   # blue, orange, aqua, violet
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]   # blue, orange, aqua, yellow (validated order)
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"

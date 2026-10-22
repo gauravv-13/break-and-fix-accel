@@ -16,5 +16,5 @@
 | detection, 4 flips in one row | 0.0% | 99.1% |
 | detection, 5 flips in one row | 100.0% | 100.0% |
 | detection, 6 flips in one row | 0.0% | 99.5% |
-| detection, targeted (all flip prefixes, 5 runs) | 100.0% | 100.0% |
-| targeted: changed rows flagged at end of attack | 120/132 | 132/132 |
+| detection, targeted (all flip prefixes, 20 runs) | 100.0% | 100.0% |
+| targeted: changed rows flagged at end of attack | 388/456 | 456/456 |

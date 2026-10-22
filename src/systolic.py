@@ -94,8 +94,10 @@ def run_tile(W_tile, X_stream, w_mask=None):
 def matmul(X, W, check_row=None, check_latency=0):
     """Tiled matrix multiply X (M, K) int8 @ W (K, N) int8 -> (M, N) int32 on the array.
 
-    check_row(k, nt, row_values) -> bool: optional checker called for every weight row as
-    it loads (row k of the tile in tile-column nt). It returns True if the row is OK.
+    check_row(k, nt, row_values): optional checker called for every weight row as it loads
+    (row k of the tile in tile-column nt). It returns either a bool (True = row is OK), or
+    a tuple (status, row) for error-correcting checkers, where status is "ok", "corrected"
+    or "detected" and row is the (possibly corrected) row that gets loaded into the array.
     check_latency: extra cycles added per tile while the checker finishes.
 
     Returns (Y, stats).
@@ -107,7 +109,7 @@ def matmul(X, W, check_row=None, check_latency=0):
     nt_n = -(-N // C)
     Y = np.zeros((M, N), dtype=np.int32)
     stats = {"tiles": 0, "load": 0, "fill": 0, "compute": 0, "drain": 0, "check": 0,
-             "busy_pe_cycles": 0, "total": 0, "check_failures": 0}
+             "busy_pe_cycles": 0, "total": 0, "check_failures": 0, "corrections": 0}
 
     for nt in range(nt_n):
         n0, n1 = nt * C, min((nt + 1) * C, N)
@@ -119,7 +121,13 @@ def matmul(X, W, check_row=None, check_latency=0):
             w_mask[: k1 - k0, : n1 - n0] = True
             if check_row is not None:
                 for k in range(k0, k1):
-                    if not check_row(k, nt, W[k, n0:n1]):
+                    res = check_row(k, nt, W[k, n0:n1])
+                    if isinstance(res, tuple):
+                        status, fixed = res
+                        W_tile[k - k0, : n1 - n0] = fixed
+                        stats["corrections"] += status == "corrected"
+                        stats["check_failures"] += status == "detected"
+                    elif not res:
                         stats["check_failures"] += 1
             X_tile = np.zeros((M, R), dtype=np.int8)
             X_tile[:, : k1 - k0] = X[:, k0:k1]

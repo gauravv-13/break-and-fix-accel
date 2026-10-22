@@ -4,6 +4,7 @@ How to reproduce everything so far:
 ```
 .venv/bin/python -m src.experiments_phase1   # Phase 1 numbers + plots
 .venv/bin/python -m src.experiments_phase2   # Phase 2 numbers + plots
+.venv/bin/python -m src.experiments_phase2b  # Phase 2b (needs Phase 2's results.json)
 .venv/bin/python -m pytest                   # all tests
 ```
 All randomness is seeded (seed 0 unless stated otherwise).
@@ -120,6 +121,9 @@ Random flips (20 trials each):
 | std (pp) | 0.14 | 0.21 | 0.73 | 0.38 | 0.82 | 1.13 | 2.03 |
 | worst trial (%) | 96.39 | 96.67 | 94.44 | 96.11 | 93.33 | 92.22 | 88.33 |
 
+(Update in Phase 2b: the targeted search was rerun with 20 attacker batches; see the
+Phase 2b entry for the 20-run numbers. Runs 0-4 gave exactly the same results again.)
+
 Targeted bit search: reached chance level (10.3-10.8%) in all 5 runs, after
 **33, 30, 29, 30, 22 flips** (median 30). That is 0.16% of the weight bits. The first flip
 alone drops accuracy to ~93%. 100 random flips only drop it to 93%.
@@ -178,3 +182,131 @@ model as a whole was still flagged because other rows failed.
    and what does it cost in memory?
 3. Why is the extra-cycle cost 4.35% for one image but only 0.26% for 360 images, even
    though both add the same 40 cycles?
+
+---
+
+## Phase 2b: Adaptive attacker, attackable check bits, SECDED, 20 targeted runs (2026-10-22) - DONE
+
+### What was built
+- `src/defense_checksum.py` refactored: a shared `RowCodeChecker` base class (stored code
+  word per row, `decode_row`, `with_flipped_stored_bits` to attack the check bits,
+  `bit_syndromes` for the adaptive attacker). Parity/CRC-8 behave exactly as before.
+- `src/defense_secded.py`: SECDED (extended Hamming) per row: (72,64) for 8-weight rows,
+  (22,16) for 2-weight rows. Corrects 1 flipped bit (data or check bit), detects 2.
+  The accelerator now loads the CORRECTED row (systolic `check_row` hook accepts
+  `(status, row)`), and counts corrections.
+- `src/adaptive.py`: the adaptive attacker. All three codes are linear, so a flip
+  pattern is invisible exactly when the XOR of its bits' syndromes is 0. It enumerates
+  the smallest invisible patterns per row: parity = any 2 bits (2,016 per 8-byte row);
+  CRC-8 = 4-bit patterns (5,049 per 8-byte row, 16 per 2-byte row); SECDED = 4-bit
+  patterns (7,025 / 64). Search: rank every allowed pattern by a gradient estimate, try
+  the top 200 for real, keep the one that raises the loss most, repeat.
+  Control: the same search with single bits and no constraint, so we compare like with
+  like.
+- `src/experiments_phase2.py`: targeted Phase-2 search now runs 20 times (seeds 0-19).
+- `src/experiments_phase2b.py`: all numbers/plots below.
+- `tests/test_phase2b.py`: 15 new tests (SECDED corrects every single data-bit and
+  check-bit flip in every row, detects every double flip (exhaustive); accelerator
+  repairs 30 single flips with bit-identical output; clean accuracy unchanged; no
+  invisible CRC-8/SECDED pattern below 4 bits (exhaustive over 1-, 2-, 3-bit patterns);
+  300 sampled "invisible" patterns per defense really pass the real checker; the
+  adaptive attack stays invisible and still hurts; a flipped stored checksum bit gives
+  exactly one false alarm). Full suite: 47 passed.
+
+### Key numbers
+**Item 4: Phase-2 targeted search, 20 runs:** all 20 reached chance; flips needed
+11-35, median 28.5, mean 26.8 ± 6.0. Of 536 flips: 394 bit 7, 123 bit 6, 17 bit 5,
+2 bit 4; 120 in layer 1, 416 in layer 2. Parity flagged 388/456 changed rows (85%),
+CRC-8 456/456; both flagged every run from its first flip.
+
+**Item 1: adaptive attacker (20 runs each, same attacker batches):**
+
+| attack (flips must be invisible to) | reached chance | bits flipped: median (range), mean ± std |
+|---|---|---|
+| nothing (control, single bits) | 20/20 | 20 (9-27), 19.4 ± 5.2 |
+| parity (2 bits in one row) | 20/20 | 18 (16-26), 18.2 ± 2.4 |
+| CRC-8 (4-bit invisible patterns) | 20/20 | 36 (24-48), 35.2 ± 5.5 |
+| SECDED (4-bit invisible patterns) | 20/20 | 36 (28-48), 35.6 ± 5.2 |
+
+Every adaptive run was invisible to the defense it targeted (0 rows flagged, checked
+by assertion). Parity does not slow the attacker at all (18 vs 20 bits); CRC-8 and SECDED
+only about double the bits needed (36 vs 20). Cross-checks: the CRC-8-invisible attack is
+also invisible to parity (CRC-8's polynomial makes every invisible pattern have an even
+number of bits) but SECDED detects it in 20/20 runs; the SECDED-invisible attack is caught
+by CRC-8 in 20/20 runs. So no single code here stops an attacker who knows it.
+(Note the control needs fewer bits than the Phase-2 search, 20 vs 28.5, because it
+ranks every bit instead of only the top-10 weights per layer.)
+
+**Item 2: check bits in attackable memory (1000 trials per point):** a "false alarm" is a
+row flagged although its weights are intact.
+
+| random flips | parity (320 check bits) | CRC-8 (2560) | SECDED (2496) |
+|---|---|---|---|
+| 1 | 1.2% | 11.1% | 0.0% |
+| 5 | 6.9% | 44.7% | 0.0% |
+| 20 | 26.1% | 90.7% | 0.5% |
+| 100 | 71.6% | 100.0% | 12.7% |
+
+About 1.7% (parity) and 11-12% (CRC-8) of all alarm rows are false: roughly each code's
+share of the total memory, as expected. SECDED fixes a single flipped check bit, so it
+only false-alarms when two flips hit the check bits of the same row.
+
+**Item 3: SECDED vs parity vs CRC-8:**
+
+| | parity | CRC-8 | SECDED |
+|---|---|---|---|
+| extra memory | 320 bits (1.69%) | 2,560 (13.51%) | 2,496 (13.18%) |
+| extra cycles, 1 image (920 base) | +40 (4.35%) | +40 (4.35%) | +80 (8.70%) |
+| extra cycles, 360 images | +40 (0.26%) | +40 (0.26%) | +80 (0.52%) |
+| 1 flip in a row | detected | detected | **corrected** |
+| 2 flips in a row | missed 100% | detected | detected |
+| 3 flips in a row | detected | detected | 25% detected, **75% mis-corrected** |
+| 4 / 6 flips in a row | missed 100% | 99.4 / 99.3% detected | 99.0 / 99.2% detected |
+| clean accuracy | 96.94% | 96.94% | 96.94% |
+
+Random flips in the weights only (1000 trials): SECDED fully repairs 100% of trials at 1
+flip, 86% at 10, 57% at 20, 1% at 50. Mean accuracy after SECDED stays 96.05-96.94% (no
+defense: 92.85% at 100 flips). Some row gets silently written with a wrong value in 1.4% of
+trials at 20 flips, 13% at 50 and 62% at 100 (rows with 3+ flips get mis-corrected), but in
+almost all of those another row raises an alarm; silent corruption with no alarm at all
+is at most 1.1% (at 20 flips).
+
+Phase-2 targeted runs (not adaptive) seen by SECDED: 3/20 runs fully repaired to 96.94%
+with no alarm; the other 17 raise an alarm. Accuracy after correction: median 84.2%
+(25.6-96.9%), because rows with 2+ flips can only be detected, not fixed; 5 rows in total
+(4 runs) were mis-corrected.
+
+### Plots / tables
+- `results/phase2/accuracy_vs_flips.png` (updated: 20 targeted runs)
+- `results/phase2/adaptive_attacks.png` (accuracy vs bits for the 4 attacks + bits needed)
+- `results/phase2/false_alarms.png`
+- `results/phase2/same_row_outcomes.png` (corrected / detected / mis-corrected / missed)
+- `results/phase2/phase2b_tables.md`, `results/phase2/phase2b_results.json`
+- (`detection_same_row.png` and `defense_table.md` from Phase 2 are regenerated too)
+
+### Known problems / simplifications
+- The adaptive attacker assumes it can flip any chosen set of bits exactly, including
+  2-4 bits in one 64-bit row at once. Real RowHammer gives far less control over which
+  bits flip; this is a worst-case (strong attacker) model.
+- The adaptive search only uses the smallest invisible patterns (2 bits for parity, 4 for
+  CRC-8/SECDED), and only from the top 200 gradient-ranked patterns per round. A better
+  search could need even fewer bits, so these counts are upper limits.
+- SECDED's 2-cycle check latency is an assumption (1 for syndrome, 1 for correction),
+  not measured. Phase 5 will build a checker in Verilog.
+- On an alarm the model does nothing (no reload, no stop); "accuracy after SECDED"
+  leaves detected-but-uncorrectable rows as they are.
+- False alarms only consider random flips; an attacker could flip check bits on purpose
+  to cause alarms (a denial-of-service), not studied.
+- Not tried yet: combining two codes (e.g. CRC-8 + SECDED), or a keyed/cryptographic
+  check (MAC) that an attacker cannot compute. Our results suggest that's the real fix
+  against an adaptive attacker.
+- Plot palette: the colorblind validator script needs Node.js, which isn't installed; I
+  used the palette's first four colors in its documented, pre-validated order instead.
+
+### Three questions I should be able to answer
+1. Why can an attacker who knows the code always find flips it can't see? Why does
+   that take 2 bits for parity but 4 bits for CRC-8 and SECDED?
+2. Why does SECDED have almost no false alarms when its check bits get hit, while
+   CRC-8 (about the same number of check bits) has the most?
+3. SECDED corrects 1 flip and detects 2. What goes wrong with 3 flips in one row, and why
+   is "mis-corrected" worse than "detected"?

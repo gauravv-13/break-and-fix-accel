@@ -18,7 +18,7 @@ OUT = Path(__file__).resolve().parent.parent / "results" / "phase2"
 N_LIST = [1, 2, 5, 10, 20, 50, 100]
 N_TRIALS = 20            # accuracy trials per N (as in the plan)
 N_DETECT_TRIALS = 1000   # more trials for the detection-rate estimate (cheap)
-BFA_SEEDS = [0, 1, 2, 3, 4]
+BFA_SEEDS = list(range(20))
 ATTACK_BATCH = 128
 
 
@@ -188,7 +188,7 @@ def make_plots(res):
     plt = plotstyle.setup()
     blue, orange = plotstyle.SERIES[0], plotstyle.SERIES[1]
 
-    fig, ax = plt.subplots(figsize=(6.4, 4))
+    fig, ax = plt.subplots(figsize=(6.6, 4.4))
     Ns = N_LIST
     m = np.array([res["random"][N]["mean"] for N in Ns]) * 100
     s = np.array([res["random"][N]["std"] for N in Ns]) * 100
@@ -196,7 +196,7 @@ def make_plots(res):
     ax.plot(Ns, m, marker="o", color=blue, label=f"random flips (mean ± 1 std, {N_TRIALS} trials)")
     for i, r in enumerate(res["targeted"]):
         xs = np.arange(1, len(r["test_acc"]))
-        ax.plot(xs, np.array(r["test_acc"][1:]) * 100, color=orange, linewidth=1.2, alpha=0.85,
+        ax.plot(xs, np.array(r["test_acc"][1:]) * 100, color=orange, linewidth=1, alpha=0.55,
                 label=f"targeted bit search ({len(res['targeted'])} runs)" if i == 0 else None)
     ax.axhline(10, color=plotstyle.MUTED, linewidth=1, linestyle="--")
     ax.text(1.05, 11.5, "chance (10%)", color=plotstyle.MUTED, fontsize=8)
@@ -206,7 +206,7 @@ def make_plots(res):
     ax.set_ylabel("test accuracy (%)")
     ax.set_ylim(0, 102)
     ax.set_title(f"Random vs targeted bit flips ({res['total_weight_bits']:,} weight bits)")
-    ax.legend(loc="lower right", bbox_to_anchor=(1.0, 0.18))
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=9)
     fig.tight_layout()
     fig.savefig(OUT / "accuracy_vs_flips.png")
     plt.close(fig)
