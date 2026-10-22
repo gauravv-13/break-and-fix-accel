@@ -1,0 +1,58 @@
+{
+  "float_acc": 0.9694444444444444,
+  "int8_acc": 0.9694444444444444,
+  "accel_acc": 0.9694444444444444,
+  "predictions_changed_by_int8": 2,
+  "n_test": 360,
+  "scales": {
+    "s_in": 0.007874015748031496,
+    "s_w1": 0.010221916123537412,
+    "s_h": 0.049424367405865914,
+    "s_w2": 0.01320526587659839,
+    "m1": 0.0016284989116975123
+  },
+  "layers": {
+    "layer1_batch=360": {
+      "tiles": 32,
+      "load": 256,
+      "fill": 224,
+      "compute": 11520,
+      "drain": 224,
+      "total": 12224,
+      "busy_pe_cycles": 737280,
+      "utilization": 0.9424083769633508
+    },
+    "layer2_batch=360": {
+      "tiles": 8,
+      "load": 64,
+      "fill": 56,
+      "compute": 2880,
+      "drain": 56,
+      "total": 3056,
+      "busy_pe_cycles": 115200,
+      "utilization": 0.5890052356020943
+    },
+    "layer1_batch=1": {
+      "tiles": 32,
+      "load": 256,
+      "fill": 224,
+      "compute": 32,
+      "drain": 224,
+      "total": 736,
+      "busy_pe_cycles": 2048,
+      "utilization": 0.043478260869565216
+    },
+    "layer2_batch=1": {
+      "tiles": 8,
+      "load": 64,
+      "fill": 56,
+      "compute": 8,
+      "drain": 56,
+      "total": 184,
+      "busy_pe_cycles": 320,
+      "utilization": 0.02717391304347826
+    }
+  },
+  "total_cycles_batch=360": 15280,
+  "total_cycles_batch=1": 920
+}
