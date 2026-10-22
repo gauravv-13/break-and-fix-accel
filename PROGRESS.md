@@ -524,3 +524,97 @@ References (existence and venue checked online; content summaries as noted):
 2. Why do the masked shares need to be 32 bits wide, when the weights are only 8 bits?
 3. Why does masking force a second-order attack, and why does that help more when the
    measurements are noisier?
+
+---
+
+## Phase 4: Memory encryption cost (2026-10-22) - DONE
+
+### What was built
+- `src/memory_encryption.py`: the flat INT8 weight memory (2,368 bytes = 148 AES blocks)
+  is stored in "DRAM" encrypted with AES-128-CTR (keystream block i =
+  AES_K(nonce || i)), using the AES track's own `src/aes/aes.py`. The loader decrypts with
+  the same XOR. Cost model per option (below).
+- `src/experiments_phase4.py`: functional check (decrypt -> accelerator logits
+  bit-identical) and the cost table/plot.
+- `tests/test_phase4.py`: 6 tests (keystream equals `cryptography`'s AES-CTR; encrypt ->
+  decrypt -> identical inference, and >95% of DRAM bytes change; a flipped ciphertext bit
+  flips exactly the same plaintext bit; 148 blocks; instruction counts are read from
+  `results/rv32i/`; cycle formulas). Full suite: 78 passed.
+
+### Assumptions (stated, not measured)
+- RV32I options: instructions per block taken from `results/rv32i/aes_rv32i_results.json`
+  (MEASURED by the AES track on its RV32I simulator, pre-expanded round keys):
+  table-free 2,792, T-table 921, Zkne 264, Custom-0 197. Plus 17 instructions per block for
+  the CTR part (load/XOR/store 16 bytes, counter, loop), an ESTIMATE. Cycles =
+  instructions x CPI, CPI 1.3 main value (1.0-1.5 range, as in the AES track).
+- `../AES_processor` RV64 + Zkne: 54 cycles per CTR block, as reported in its README.
+- Dedicated engine: iterative = 1 round per cycle, 11 cycles per block; pipelined =
+  10-stage unrolled, 1 block per cycle after 11 cycles of latency.
+- All weights are decrypted before the inference starts (no overlap), same clock as the
+  accelerator. Key expansion (1,471 RV32I instructions) happens once per key, not per
+  inference. Only the weights are encrypted (not biases/scales).
+- "360 images one at a time" = batch-1 mode, weights re-read and re-decrypted for every
+  image (what Phase 3's per-image randomness would require).
+
+### Key numbers (extra cycles; total time as a multiple of no encryption; CPI 1.3)
+
+| option | cycles/block | 1 image (base 920) | 360 images, one batch (base 15,280) | 360 images, one at a time (base 331,200) |
+|---|---|---|---|---|
+| table-free software AES, RV32I | 3,652 | +540,452 (588x) | +540,452 (36.4x) | +194.6 M (588x) |
+| T-table software AES, RV32I | 1,219 | +180,471 (197x) | +180,471 (12.8x) | +65.0 M (197x) |
+| RV32I + Zkne | 365 | +54,064 (59.8x) | +54,064 (4.5x) | +19.5 M (59.8x) |
+| RV32I + Custom-0 (aes_round_col) | 278 | +41,174 (45.8x) | +41,174 (3.7x) | +14.8 M (45.8x) |
+| ../AES_processor RV64 + Zkne | 54 | +7,992 (9.7x) | +7,992 (1.5x) | +2.9 M (9.7x) |
+| dedicated engine, iterative | 11 | +1,628 (2.8x) | +1,628 (1.1x) | +586,080 (2.8x) |
+| dedicated engine, pipelined | 1 | +158 (1.17x) | +158 (1.01x) | +56,880 (1.17x) |
+
+(Full table with CPI 1.0-1.5 ranges: `results/phase4/phase4_table.md`.)
+
+Main takeaways: on a small RV32I core even the best instruction-set option makes one
+inference ~46x slower, because decrypting 2.4 KB of weights takes far longer than our tiny
+920-cycle inference. Batching hides it (weights decrypted once per batch). Only a
+dedicated engine keeps the overhead small for single images. Also: CTR encryption gives
+no integrity. A flipped ciphertext bit flips exactly the same weight bit (tested), so the
+Phase 2 bit-flip attack works just as well on encrypted weights. Encryption has to be
+combined with a row check (Phase 2/2b) or a MAC (Phase 2c, partial).
+
+### How the AES track's custom instruction differs from my aes_round64.v
+(read `../AES_processor/rtl/aes_round64.v`, not changed)
+- `aes_round64.v` is a 64-bit, single-cycle custom-0 instruction for an RV64 pipeline. Its
+  own header marks it LEGACY and NON-STANDARD: it treats a 64-bit register as the whole
+  AES state (real AES has a 128-bit state), so its "ShiftRows" only swaps bytes 1<->5 and
+  3<->7 inside 8 bytes, then applies MixColumns to two 32-bit columns and XORs a 64-bit
+  round key. It does 8 S-boxes + 2 MixColumns per instruction but does not compute real
+  AES-128 on its own.
+- The AES track's `aes_round_col` (RV32, custom-0, funct3 = 0) works on ONE 32-bit column:
+  rd = MixColumns(SubBytes(rs1)) XOR rs2 (4 S-boxes + 1 MixColumns). `aes_final_col`
+  (funct3 = 1) skips MixColumns for the last round, and two byte-packing helpers
+  (`aes_shift_even`, funct3 = 2: low half from rs1, high half from rs2; `aes_shift_diag`,
+  funct3 = 3: alternating bytes from rs1 and rs2) let ShiftRows be done correctly across
+  the full 128-bit state held in four registers. Result: real AES-128,
+  checked against FIPS-197 and random blocks (197 instructions per block).
+- So: same idea (S-box + MixColumns + AddRoundKey in one instruction), but half the width
+  per instruction, and correct AES because ShiftRows is handled across all four columns.
+  `../AES_processor` itself now uses the standard Zkne instructions (`zkne_unit.v`) for
+  real AES; its README reports 54 cycles per CTR block on the RV64 core.
+
+### Plots / tables
+- `results/phase4/memory_encryption_cost.png`, `results/phase4/phase4_table.md`,
+  `results/phase4/phase4_results.json`
+
+### Known problems / simplifications
+- The 17-instruction CTR overhead and the engine cycle counts are assumptions; the
+  RV32I counts are measured by the AES track, but CPI is assumed.
+- No overlap: a CTR keystream does not depend on the data, so a real design could compute
+  it ahead of time (while the previous layer or image runs) and hide much of the cost.
+  Not modelled.
+- Clock speeds of core, engine and accelerator are assumed equal.
+- Nonce/counter management (a new nonce whenever the weights are re-encrypted) is not
+  modelled; reusing a CTR nonce with different weights would leak their XOR.
+
+### Three questions I should be able to answer
+1. Why is decryption almost free for 360 images in one batch but very expensive for one
+   image, with the same AES code?
+2. Why doesn't AES-CTR encryption stop the Phase 2 bit-flip attack?
+3. What is the difference between my aes_round64 instruction and the AES track's
+   aes_round_col, and why does only one of them compute real AES-128?
