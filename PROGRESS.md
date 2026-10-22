@@ -692,9 +692,63 @@ array's arithmetic.
   small designs.
 
 ### Three questions I should be able to answer
-1. Why is a parity checker for 64 bits exactly 63 XOR gates deep only 6 levels (plus 1
+1. Why does a 64-bit parity checker need 63 XOR gates but only 6 levels of them (plus 1
    for the compare)?
 2. Why did writing CRC-8 as XOR masks make the circuit much shallower than the bit-by-bit
    loop, if both compute the same function?
 3. How did I decide that SECDED needs 1 cycle instead of 2, and what are the limits of
    that comparison?
+
+---
+
+## Phase 6: Dashboard and report (2026-10-22) - DONE
+
+### What was built
+- `src/build_dashboard.py` -> `results/dashboard.html` (44 KB, one self-contained file: no
+  server, no external scripts or fonts). It only reads saved results (Phases 1-5 and
+  `results/aes/`), embeds them as JSON and renders with plain JavaScript + SVG.
+  - Toggles: parity, CRC-8, SECDED, MAC-8, MAC-16, shuffling, masking (per batch / per
+    image; 2 multipliers or 1), AES-CTR encryption (7 implementations).
+  - Sliders: number of flipped bits (1-100, the measured points) and noise sigma
+    (0.5-4, the AES track's measured points).
+  - Shows: accuracy vs flips (random, targeted, adaptive vs each enabled code), a table
+    of what each enabled defense catches at the chosen flip count, a row-check comparison
+    table, the AES CPA success curves with the selected sigma, side-channel defense costs,
+    encryption slowdowns, hardware cell counts, and a total-cost panel.
+  - Every analytical entry (MAC numbers, shuffling/masking effect on traces) carries an
+    "analytical" label; the total-cost panel says the measured per-defense costs are added
+    up (interactions not simulated). Light and dark mode; works at phone width (checked in
+    a 390 px frame); hover tooltips on the charts.
+  - Checked by rendering in headless Chrome (default view, all defenses on, light mode,
+    phone width) with no console errors. One bug found and fixed on the way: the AES curves
+    were looked up by keys like "1.0" but JavaScript turns 1.0 into "1"; they are now lists
+    in sigma order.
+- `docs/report.md` (~2,700 words + tables and 5 figures, about 5 pages): problem, setup,
+  results per phase, related work, limits (including the partial Phase 2c and every
+  analytical-only entry), and gaps / future work for my advisor.
+- Related work: 19 references checked online for existence and venue (listed at the end of
+  the report). One could not be verified (Kung, "Why Systolic Architectures?", 1982) and
+  is marked as such; standards documents (NIST SP 800-38A/B, RFC 2104, RISC-V Zkne) are
+  listed as not re-checked.
+- `tests/test_phase6.py`: 3 tests (dashboard has no external resources and its embedded
+  numbers match the results files; analytical labels present; every image linked from the
+  report exists and all report sections are there). Full suite: 86 passed.
+
+### Safety-filter skips
+None in Phases 3-6. (The earlier Phase 2c stops are recorded in the Phase 2c entry and in
+the report's Limits section.)
+
+### Known problems / simplifications
+- The dashboard can only show the measured points (7 flip counts, 4 noise levels); it
+  does not interpolate.
+- Total cost = sum of separately measured costs; e.g. masking + encryption together were
+  never simulated as one design.
+- The dashboard was checked with screenshots, not with automated browser tests in the
+  test suite (the suite checks the data and the self-contained property).
+
+### Three questions I should be able to answer
+1. Why does the dashboard show "analytical" next to the MAC and the side-channel effect
+   numbers, and what would it take to turn them into measured ones?
+2. If my advisor turns on parity + masking per image, why do 360 images get about 24x
+   slower, and which single assumption most affects that number?
+3. Which three gaps in the report would I work on first, and why?
