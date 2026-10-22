@@ -12,23 +12,31 @@
 3. Plot accuracy against the number of flipped bits for both.
 4. Add a defense to the accelerator model, such as a checksum per weight row that is checked when weights load. Measure what it catches and what it costs in extra memory and cycles.
 
-## Phase 3: Steal secrets from power use
-1. Warm-up: write AES-128 and check it against the FIPS-197 test vectors. Simulate power traces for the first round (Hamming weight of the S-box output plus Gaussian noise) and recover the 16-byte key with correlation power analysis (CPA).
-2. Attack the accelerator the same way: simulate power traces of the multiply units on known inputs and recover the secret first-layer weights (the idea behind the CSI NN paper, Batina et al., USENIX Security 2019).
-3. Plot how many traces each attack needs at different noise levels.
-4. Add a defense (shuffling the multiply order, or masking). Show how much harder the attack gets and what it costs.
+## Phase 2b / 2c (added later)
+- 2b: adaptive attacker that only uses flips the defense cannot see; check bits in attackable memory (false alarms); SECDED as a third defense; 20 targeted runs. DONE.
+- 2c: keyed MAC per row. PARTIAL: module built, untested, no MAC experiments (see PROGRESS.md).
 
-## Phase 4: Encrypt the weights with AES
-1. Store the weights in DRAM encrypted with AES-128 in counter mode, decrypted as they load into the accelerator.
-2. Compare three setups: software AES on a simple RV32I core, AES with a custom AES-round instruction, and a dedicated AES engine beside the accelerator. If my own AES-round instruction code (aes_round64.v) is in this folder, base the custom-instruction setup on it.
-3. Estimate the extra time each setup adds per inference. List every assumption. Show a table and a plot.
-4. Bonus: write a small RV32I instruction simulator in Python so the software-AES numbers come from real instruction counts instead of estimates.
+## Phase 3: Side-channel defenses for the accelerator (defense cost only, no new attacks)
+1. The side-channel evidence is the AES CPA results in `results/aes/` from the merged AES track. No new attack code.
+2. Add two defenses to the accelerator model: random shuffling of the MAC (multiply-accumulate) order, and first-order Boolean masking of the multiply step.
+3. For each, measure the cost: extra cycles, extra hardware (random bits per inference, extra registers), and check that clean accuracy is unchanged.
+4. In PROGRESS.md, add a short analytical note (cited published work, clearly marked analytical, not measured) on how much each defense is expected to raise the number of traces an attack needs.
 
-## Phase 5: Turn a defense into hardware
-1. Write the Phase 2 checksum checker in Verilog.
-2. Test it with a self-checking testbench in Icarus Verilog until it passes.
-3. Synthesize it with Yosys and report a rough gate count.
+## Phase 4: Memory encryption cost
+1. Weights stored in DRAM encrypted with AES-128 in counter mode, decrypted as they load.
+2. Use the RV32I instruction counts in `results/rv32i/` (table-free, T-table, Zkne, custom instruction) instead of re-estimating; add a dedicated AES engine option with stated assumptions.
+3. Note in PROGRESS.md how the AES track's custom instruction differs from my 64-bit `aes_round64.v` in `../AES_processor` (read only, never change it).
+4. Report extra time per inference for 1 image and for 360 images, in a table and a plot.
+
+## Phase 5: Hardware
+1. Write the parity, CRC-8 and SECDED row checkers in Verilog.
+2. Install Icarus Verilog and Yosys with Homebrew. Test each checker with a self-checking testbench, synthesize with Yosys, report cell counts.
+3. Compare the real check delays with the cycle assumptions from Phases 2 and 2b; update the numbers if they differ.
 
 ## Phase 6: Dashboard and report
-1. Build `results/dashboard.html`: one self-contained page that opens in a browser with no server. I should be able to switch each attack and defense on or off, move sliders for noise and number of bit flips, and see the results change. Use precomputed results from the earlier phases.
-2. Search the web and write `docs/report.md` (about 5 pages): problem, setup, results with plots, related work (real, well-known papers only; mark anything you couldn't verify), and a "gaps and future work" section for my advisor.
+1. `results/dashboard.html`: one self-contained page using precomputed results, with toggles for each defense and sliders for noise and number of flips.
+2. `docs/report.md`: problem, setup, results with plots, related work (real papers only), limits (including the partial Phase 2c and the analytical-only entries), and "gaps and future work" for my advisor.
+
+## Rules for the remaining phases
+- Follow the "Finishing a phase" checklist in CLAUDE.md after each phase.
+- If a safety filter stops a step, do not retry it: write what was skipped in PROGRESS.md and move on.
