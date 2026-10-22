@@ -1,0 +1,5 @@
+variant_id,implementation,alu,load,store,branch,jump,custom,total_instr_per_block,total_instr_incl_key_exp,cycles_cpi_1.0,cycles_cpi_1.3,cycles_cpi_1.5,speedup_vs_tablefree
+tablefree,Software AES (Table-Free),1760,665,317,49,1,0,2792,4263,2792.0,3629.6,4188.0,1.0
+ttable,Software AES (T-Table),677,217,17,9,1,0,921,2392,921.0,1197.3,1381.5,3.03
+zkne,RV32I + Zkne (aes32esmi/esi),42,48,4,9,1,160,264,1735,264.0,343.2,396.0,10.58
+custom0,RV32I + Custom-0 (aes_round_col),15,48,4,9,1,120,197,1668,197.0,256.1,295.5,14.17
