@@ -104,7 +104,7 @@ def test_secded_clean_accuracy_and_cycles(qm, checkers):
     lg, st = accel.run_inference(Xq, q, checker=checkers["secded"])
     np.testing.assert_array_equal(lg, plain)
     assert model.accuracy(lg, y) == model.accuracy(plain, y)
-    assert st["total_cycles"] - st0["total_cycles"] == 40 * 2
+    assert st["total_cycles"] - st0["total_cycles"] == 40 * checkers["secded"].check_latency
 
 
 @pytest.mark.parametrize("kind", ["crc8", "secded"])

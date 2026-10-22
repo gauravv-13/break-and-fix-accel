@@ -21,8 +21,9 @@ When a row loads, the decoder recomputes h and compares:
 Three or more flips in one row can be "corrected" to the WRONG value (mis-correction)
 or pass unseen; the experiments measure how often.
 
-Cost model assumption: syndrome XOR tree + correction step = check_latency 2 cycles per
-tile (one more than parity/CRC, because of the correction step).
+Cost model: check_latency 1 cycle per tile. (Phase 2b assumed 2 cycles for syndrome +
+correction; the Phase 5 Verilog decoder synthesized with Yosys has 13 gate levels for an
+8-weight row, far below one PE multiply-accumulate (51 levels), so 1 cycle is enough.)
 """
 import numpy as np
 
@@ -49,7 +50,7 @@ def data_positions(k_data):
 class SecdedChecker(RowCodeChecker):
     kind = "secded"
 
-    def __init__(self, clean_weights, check_latency=2):
+    def __init__(self, clean_weights, check_latency=1):
         self.check_latency = check_latency
         self._pos = {}
         self._store(clean_weights)

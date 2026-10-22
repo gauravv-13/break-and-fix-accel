@@ -4860,13 +4860,13 @@
     "no_check": 920,
     "parity": 960,
     "crc8": 960,
-    "secded": 1000
+    "secded": 960
    },
    "batch360": {
     "no_check": 15280,
     "parity": 15320,
     "crc8": 15320,
-    "secded": 15360
+    "secded": 15320
    },
    "parity": {
     "memory_bits": 320,
@@ -4883,7 +4883,7 @@
    "secded": {
     "memory_bits": 2496,
     "memory_percent": 13.175675675675675,
-    "check_latency_per_tile": 2,
+    "check_latency_per_tile": 1,
     "clean_acc": 0.9694444444444444
    }
   }

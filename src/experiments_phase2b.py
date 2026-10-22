@@ -271,7 +271,7 @@ def write_tables(res):
     L += ["", "## Cost of each defense", "",
           "| | parity | CRC-8 | SECDED |", "|---|---|---|---|",
           "| extra memory bits | " + " | ".join(f"{c[d]['memory_bits']} ({c[d]['memory_percent']:.2f}%)" for d in DEFENSES) + " |",
-          "| check latency per tile (assumed) | " + " | ".join(str(c[d]["check_latency_per_tile"]) for d in DEFENSES) + " |"]
+          "| check latency per tile (Phase 5 hardware: 1 cycle fits for all three) | " + " | ".join(str(c[d]["check_latency_per_tile"]) for d in DEFENSES) + " |"]
     for b, nm in [("batch1", "1 image"), ("batch360", "360 images")]:
         base = c[b]["no_check"]
         L.append(f"| extra cycles, {nm} (base {base}) | " + " | ".join(

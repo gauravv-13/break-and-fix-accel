@@ -1,0 +1,218 @@
+{
+  "testbench": {
+    "8B": {
+      "result": "PASS: 2380 vectors x 3 checkers, 8-byte rows",
+      "passed": true,
+      "vectors": 2380
+    },
+    "2B": {
+      "result": "PASS: 540 vectors x 3 checkers, 2-byte rows",
+      "passed": true,
+      "vectors": 540
+    }
+  },
+  "synthesis": [
+    {
+      "cells": 64,
+      "cell_types": {
+        "XNOR": 55,
+        "XOR": 9
+      },
+      "depth": 7,
+      "kind": "parity",
+      "module": "row_parity",
+      "params": {
+        "N_BYTES": 8
+      },
+      "desc": "8-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.13725490196078433,
+      "logic_cycles": 1,
+      "assumed_latency": 1,
+      "cells_vs_64_pe": 0.0010869565217391304
+    },
+    {
+      "cells": 16,
+      "cell_types": {
+        "XNOR": 13,
+        "XOR": 3
+      },
+      "depth": 5,
+      "kind": "parity",
+      "module": "row_parity",
+      "params": {
+        "N_BYTES": 2
+      },
+      "desc": "2-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.09803921568627451,
+      "logic_cycles": 1,
+      "assumed_latency": 1,
+      "cells_vs_64_pe": 0.0002717391304347826
+    },
+    {
+      "cells": 200,
+      "cell_types": {
+        "AND": 7,
+        "XNOR": 135,
+        "XOR": 58
+      },
+      "depth": 10,
+      "kind": "crc8",
+      "module": "row_crc8",
+      "params": {
+        "N_BYTES": 8
+      },
+      "desc": "8-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.19607843137254902,
+      "logic_cycles": 1,
+      "assumed_latency": 1,
+      "cells_vs_64_pe": 0.0033967391304347825
+    },
+    {
+      "cells": 55,
+      "cell_types": {
+        "AND": 8,
+        "NAND": 1,
+        "NOT": 1,
+        "OR": 1,
+        "XNOR": 31,
+        "XOR": 13
+      },
+      "depth": 8,
+      "kind": "crc8",
+      "module": "row_crc8",
+      "params": {
+        "N_BYTES": 2
+      },
+      "desc": "2-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.1568627450980392,
+      "logic_cycles": 1,
+      "assumed_latency": 1,
+      "cells_vs_64_pe": 0.0009341032608695652
+    },
+    {
+      "cells": 351,
+      "cell_types": {
+        "ANDNOT": 10,
+        "AND": 28,
+        "NAND": 64,
+        "NOR": 2,
+        "NOT": 2,
+        "ORNOT": 1,
+        "OR": 1,
+        "XNOR": 191,
+        "XOR": 52
+      },
+      "depth": 13,
+      "kind": "secded",
+      "module": "row_secded",
+      "params": {
+        "N_BYTES": 8,
+        "R": 7
+      },
+      "desc": "8-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.2549019607843137,
+      "logic_cycles": 1,
+      "assumed_latency": 2,
+      "cells_vs_64_pe": 0.005961277173913044
+    },
+    {
+      "cells": 110,
+      "cell_types": {
+        "ANDNOT": 7,
+        "AND": 12,
+        "NAND": 15,
+        "NOR": 4,
+        "NOT": 2,
+        "ORNOT": 2,
+        "OR": 3,
+        "XNOR": 53,
+        "XOR": 12
+      },
+      "depth": 10,
+      "kind": "secded",
+      "module": "row_secded",
+      "params": {
+        "N_BYTES": 2,
+        "R": 5
+      },
+      "desc": "2-byte row",
+      "flow": "default",
+      "depth_vs_pe": 0.19607843137254902,
+      "logic_cycles": 1,
+      "assumed_latency": 2,
+      "cells_vs_64_pe": 0.0018682065217391305
+    },
+    {
+      "cells": 920,
+      "cell_types": {
+        "ANDNOT": 26,
+        "AND": 163,
+        "NAND": 374,
+        "NOR": 2,
+        "ORNOT": 12,
+        "OR": 49,
+        "XNOR": 60,
+        "XOR": 234
+      },
+      "depth": 51,
+      "kind": "pe_mac",
+      "module": "pe_mac",
+      "params": {},
+      "desc": "one PE: 8x8 multiply + 32-bit add",
+      "flow": "kogge-stone"
+    }
+  ],
+  "pe_mac": {
+    "cells": 920,
+    "cell_types": {
+      "ANDNOT": 26,
+      "AND": 163,
+      "NAND": 374,
+      "NOR": 2,
+      "ORNOT": 12,
+      "OR": 49,
+      "XNOR": 60,
+      "XOR": 234
+    },
+    "depth": 51,
+    "kind": "pe_mac",
+    "module": "pe_mac",
+    "params": {},
+    "desc": "one PE: 8x8 multiply + 32-bit add",
+    "flow": "kogge-stone"
+  },
+  "pe_mac_default_flow": {
+    "cells": 849,
+    "cell_types": {
+      "ANDNOT": 22,
+      "AND": 103,
+      "NAND": 364,
+      "NOR": 1,
+      "NOT": 1,
+      "ORNOT": 13,
+      "OR": 36,
+      "XNOR": 84,
+      "XOR": 225
+    },
+    "depth": 60
+  },
+  "hw_latency_per_tile": {
+    "parity": 1,
+    "crc8": 1,
+    "secded": 1
+  },
+  "assumed_latency_per_tile": {
+    "parity": 1,
+    "crc8": 1,
+    "secded": 2
+  },
+  "tools": {
+    "iverilog": "Icarus Verilog version 13.0 (stable) (v13_0)",
+    "yosys": "Yosys 0.70+post (git sha1 0c11ea098be065e585a90a06e7b7da49936cf231, Release, AppleClang clang++ 21.0.0.21000334)"
+  }
+}

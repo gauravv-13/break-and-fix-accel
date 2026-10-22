@@ -618,3 +618,83 @@ combined with a row check (Phase 2/2b) or a MAC (Phase 2c, partial).
 2. Why doesn't AES-CTR encryption stop the Phase 2 bit-flip attack?
 3. What is the difference between my aes_round64 instruction and the AES track's
    aes_round_col, and why does only one of them compute real AES-128?
+
+---
+
+## Phase 5: Row checkers in Verilog (2026-10-22) - DONE
+
+### What was built
+- Icarus Verilog 13.0 and Yosys 0.70 were already installed with Homebrew (nothing new
+  installed).
+- `hw/rtl/row_parity.v`, `hw/rtl/row_crc8.v`, `hw/rtl/row_secded.v`: combinational row
+  checkers matching the Python models bit for bit (parameter N_BYTES = 8 or 2; SECDED also
+  outputs the corrected row, a status ok/corrected/detected, and the code for the write
+  path). CRC-8 is written as 8 XOR masks (CRC is linear), which synthesizes to a balanced
+  XOR tree; my first, bit-serial version synthesized to 26 gate levels, the mask version
+  to 10.
+- `hw/rtl/pe_mac.v`: one PE's multiply-accumulate (8x8 signed multiply + 32-bit add), used
+  as the clock reference.
+- `hw/tb/tb_row_checkers.v`: self-checking testbench; reads vectors and checks every output
+  of all three checkers, prints PASS/FAIL.
+- `src/hw_vectors.py`: writes the vectors (`hw/vectors/*.hex`) with expected outputs from
+  the Python models: all clean weight rows, each with 1-4 random flips, flipped stored check
+  bits, exhaustive single flips of one row, and random rows.
+- `src/experiments_phase5.py`: runs the testbenches and Yosys synthesis
+  (2-input gates: AND, NAND, OR, NOR, XOR, XNOR, ANDNOT, ORNOT; `stat` + `ltp`).
+- `tests/test_phase5.py`: 5 tests (vectors reproducible; Verilog matches Python for both row
+  sizes; the testbench really fails on a corrupted expected value; parity synthesizes to
+  64 cells / depth 7; small CRC is shallow). Full suite: 83 passed.
+
+### Key numbers
+Testbench: PASS, 2,380 vectors x 3 checkers (8-byte rows) and 540 vectors x 3 checkers
+(2-byte rows). A deliberately corrupted vector file makes it FAIL (checked).
+
+| checker | row | 2-input cells | depth (gate levels) | depth / PE depth | cycles needed | assumed in Phase 2/2b | cells vs 64 PEs |
+|---|---|---|---|---|---|---|---|
+| parity | 8 bytes | 64 | 7 | 0.14 | 1 | 1 | 0.11% |
+| parity | 2 bytes | 16 | 5 | 0.10 | 1 | 1 | 0.03% |
+| CRC-8 | 8 bytes | 200 | 10 | 0.20 | 1 | 1 | 0.34% |
+| CRC-8 | 2 bytes | 55 | 8 | 0.16 | 1 | 1 | 0.09% |
+| SECDED | 8 bytes | 351 | 13 | 0.25 | 1 | **2** | 0.60% |
+| SECDED | 2 bytes | 110 | 10 | 0.20 | 1 | **2** | 0.19% |
+
+Clock reference: one PE multiply-accumulate = 920 cells, depth 51 (Yosys with its
+Kogge-Stone carry unit; the default flow gives 849 cells, depth 60; Booth multipliers made
+it smaller but not shallower). 64 PEs = 58,880 cells, so even SECDED is under 1% of the
+array's arithmetic.
+
+### Comparison with the Phase 2/2b cycle assumptions, and what was updated
+- Parity and CRC-8: assumed 1 cycle per tile; the hardware fits in 1 cycle. Unchanged.
+- SECDED: assumed 2 cycles per tile; the decoder + corrector is only 13 gate levels, a
+  quarter of a PE cycle, so **1 cycle is enough**. Updated: `SecdedChecker` default
+  `check_latency` 2 -> 1, the Phase 2b test now uses the checker's value, and Phase 2b was
+  re-run: SECDED now costs +40 cycles per inference (4.35% for 1 image, 0.26% for 360),
+  the same as parity and CRC-8, instead of +80. Only the 6 cost entries in
+  `results/phase2/phase2b_results.json` / `phase2b_tables.md` changed; every other Phase
+  2b number came out identical. (The Phase 2b notebook entry above still shows the old
+  +80 / 8.70% / 0.52%: superseded by this entry.)
+- The conclusion does not hinge on the PE reference: the deepest checker (13 levels) would
+  still fit in one cycle even if a hand-optimized PE were about 4x shallower than our 51.
+
+### Plots / tables
+- `results/phase5/checker_synthesis.png`, `results/phase5/phase5_table.md`,
+  `results/phase5/phase5_results.json`
+
+### Known problems / simplifications
+- "Depth" is gate levels from Yosys/ABC, not real timing: no standard-cell library, no wire
+  delays, and XOR gates count the same as NAND gates (in real cells an XOR is slower).
+  Without a cell library there is no area in um^2 or delay in ps.
+- Separate 8-byte and 2-byte checkers were synthesized; a real design handling both row
+  sizes would need both or a mode input.
+- Only the checkers are in Verilog; the rest of the accelerator, the MAC (Phase 2c),
+  masking and the AES engine are not.
+- Full synthesis takes about 2 minutes (mostly SECDED); the tests only synthesize the
+  small designs.
+
+### Three questions I should be able to answer
+1. Why is a parity checker for 64 bits exactly 63 XOR gates deep only 6 levels (plus 1
+   for the compare)?
+2. Why did writing CRC-8 as XOR masks make the circuit much shallower than the bit-by-bit
+   loop, if both compute the same function?
+3. How did I decide that SECDED needs 1 cycle instead of 2, and what are the limits of
+   that comparison?

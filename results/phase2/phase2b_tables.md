@@ -12,9 +12,9 @@
 | | parity | CRC-8 | SECDED |
 |---|---|---|---|
 | extra memory bits | 320 (1.69%) | 2560 (13.51%) | 2496 (13.18%) |
-| check latency per tile (assumed) | 1 | 1 | 2 |
-| extra cycles, 1 image (base 920) | +40 (4.35%) | +40 (4.35%) | +80 (8.70%) |
-| extra cycles, 360 images (base 15280) | +40 (0.26%) | +40 (0.26%) | +80 (0.52%) |
+| check latency per tile (Phase 5 hardware: 1 cycle fits for all three) | 1 | 1 | 1 |
+| extra cycles, 1 image (base 920) | +40 (4.35%) | +40 (4.35%) | +40 (4.35%) |
+| extra cycles, 360 images (base 15280) | +40 (0.26%) | +40 (0.26%) | +40 (0.26%) |
 | clean accuracy | 96.94% | 96.94% | 96.94% |
 
 ## m random flips inside ONE row (2000 trials each): corrected / detected / mis-corrected / missed
