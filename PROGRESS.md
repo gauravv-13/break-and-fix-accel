@@ -376,3 +376,151 @@ branch yet, so no numbers are claimed here.
 2. With an 8-bit tag, why is the chance of one changed row passing 1/256, and why does
    changing 10 rows make it 2^-80?
 3. Why does a MAC only help if the system responds to alarms?
+
+---
+
+## Merge note (2026-10-22)
+The AES/RV32I track was merged (see PROGRESS_AES.md). `requirements-aes.txt` was folded
+into `requirements.txt` (only new package: pyelftools) and deleted; full suite 63 passed.
+`src/rv32i/c_src/aes_rv32.elf` stays tracked because the RV32I tests load it.
+Small mismatch found in the AES track: PROGRESS_AES.md lists the table-free AES row as
+ALU 1,616 / Branch 193, but `results/rv32i/aes_rv32i_table.md` says ALU 1,760 /
+Branch 49. Both total 2,792 instructions per block; I use the total (from the results
+file) and did not change the AES track's files.
+
+---
+
+## Phase 3: Side-channel defenses for the accelerator, cost only (2026-10-22) - DONE
+
+No new attack code. The side-channel evidence is the AES track's simulated CPA
+(`results/aes/`): full 16-byte key recovery (90% success) needed 15 / 30 / 80 / 275
+traces at noise sigma = 0.5 / 1 / 2 / 4, i.e. traces grow roughly like sigma^2.
+
+### What was built
+- `src/systolic.py`: `matmul` now also accepts int32 weights (32-bit masked shares);
+  products and partial sums wrap modulo 2^32 like 32-bit registers. int8 behaviour is
+  unchanged.
+- `src/defense_sca.py`:
+  - **Shuffling**: a fresh random permutation of the input index k and output index n
+    per inference (or per batch). Weights load as W[pk][:, pn], inputs as X[:, pk],
+    outputs are put back in order. Logits are bit-identical.
+  - **First-order Boolean masking of the multiply step**: weights stored as two 8-bit
+    Boolean shares (w XOR m, m); at each load they are re-randomised (8 bits), extended
+    to 32 bits with the upper 24 bits masked (24 bits), and converted to arithmetic
+    shares with Goubin's Boolean-to-arithmetic conversion (32 bits). Each PE multiplies
+    the public activation by both shares and keeps two partial-sum chains; the two
+    column outputs are added only in the post-processing unit. 32-bit shares are needed
+    because 8-bit arithmetic shares would wrap mod 256 (wrong) or be non-uniform (leak).
+- `src/experiments_phase3.py`: all options simulated on the cycle model and checked to
+  give logits bit-identical to the undefended accelerator.
+- `tests/test_phase3.py`: 9 tests (int32 matmul wraps like 32-bit hardware; Goubin
+  conversion correct incl. edge values; shares recombine to the weights and are fresh on
+  every load; shuffled and masked inference bit-identical with exact cycle counts;
+  random-bit accounting). Full suite: 72 passed.
+
+### Key numbers (baseline: 920 cycles for 1 image, 15,280 for 360 images)
+
+| option | cycles, 1 image | cycles, 360 images | random bits, 1 image | random bits, 360 images |
+|---|---|---|---|---|
+| shuffle, one order per batch | 920 (+0%) | 15,280 (+0%) | 604 | 604 |
+| shuffle, new order per image (reload per image) | 920 (+0%) | 331,200 (21.7x) | 604 | 217,440 |
+| mask, 2 multipliers/PE, masks per batch | 1,000 (+8.7%) | 15,360 (+0.5%) | 151,552 | 151,552 |
+| mask, 2 multipliers/PE, new masks per image (reload) | 1,000 (+8.7%) | 360,000 (23.6x) | 151,552 | 54,558,720 |
+| mask, 1 widened multiplier (2 passes), masks per batch | 1,920 (2.09x) | 30,640 (2.0x) | 151,552 | 151,552 |
+| mask, 1 widened multiplier, new masks per image | 1,920 (2.09x) | 691,200 (45.2x) | 151,552 | 54,558,720 |
+| mask, 2 multipliers/PE, in-PE refresh per image [formula] | 1,000 (+8.7%) | 15,360 (+0.5%) | 151,552 | 27,355,136 |
+
+Clean accuracy is 96.94% in every case (logits bit-identical, checked by assertion).
+
+Extra hardware:
+- Shuffling: a permutation table of 544 bits (64 x 6 + 32 x 5, largest layer), a
+  Fisher-Yates generator, and address logic. 604 random bits per inference with one exact
+  draw per step (minimum possible: log2(n!) = 553 bits).
+- Masking (2 multipliers per PE): +88 register bits per PE (two 32-bit weight shares
+  instead of one 8-bit weight, plus a second 32-bit partial sum) = +5,632 bits in the
+  8x8 array; 2 multipliers of 8x32 per PE instead of one 8x8; weight memory doubled
+  (+18,944 bits of shares); a Goubin converter at the load port. 64 random bits per
+  weight per load (8 refresh + 24 upper-bit mask + 32 Goubin), i.e. 512 random bits per
+  cycle while a tile row of 8 weights loads.
+
+Cycle ASSUMPTIONS (not measured): shuffling permutation generated in the background
+(0 cycles; +138 cycles per inference if not overlapped); Goubin converter pipelined at
+the load port with 2 cycles latency per tile (two 32-bit subtractions in series).
+
+### The big catch: randomness per batch vs per image
+In a weight-stationary array the weights load once and then serve every image in the
+batch. If the order or the masks are only renewed per weight load, all 360 images in a
+batch see the SAME order / masks, so traces from one batch are not protected against
+each other (an attacker could treat each share like an ordinary fixed weight). Fresh
+randomness per image costs either a weight reload per image (about 22-24x slower for 360
+images, 45x for the serial masked datapath) or, for masking, refresh adders in every PE
+and up to 64 x 32 = 2,048 random bits per cycle (27.4 million bits for 360 images).
+
+### Analytical note: expected effect on the number of traces (ANALYTICAL, NOT MEASURED)
+No side-channel attack was run on the accelerator. This is what published work predicts.
+- **Shuffling.** If the targeted operation is spread uniformly over m possible time
+  positions, its correlation at any one fixed sample drops by a factor m, so a
+  single-point CPA needs about m^2 times more traces. An attacker who adds up (integrates)
+  the m candidate positions only loses a factor sqrt(m) in correlation, so about m times
+  more traces. The literature usually evaluates shuffling this way ("integrated DPA",
+  formulas from Mangard, Oswald, Popp 2007), and Veyrat-Charvillon et al. (ASIACRYPT 2012)
+  warn that simplified shuffles (e.g. a random start index) are much weaker than full
+  random permutations like ours. In our array a layer-1 weight can land in any of 32
+  tiles (and 64 x 32 positions in total), so m is roughly between 32 and 2,048. Purely as an
+  illustration, if the accelerator leaked like the AES model (30 traces at sigma = 1), that
+  would mean very roughly 30 x 32 = 960 (integrating attacker, small m) up to
+  30 x 32^2 = 30,720 traces (single-point attacker). Big caveats: the 64 PEs work in
+  parallel, so a weight's leakage is already mixed with 63 others; and with one order per
+  batch, shuffling gives no protection inside a batch.
+- **Masking.** With a correct first-order masking, each share alone is independent of the
+  weight, so first-order CPA (like the AES-track attack) should fail; the attacker needs a
+  second-order attack that combines two leakages. Chari et al. (CRYPTO 1999) showed that
+  the number of traces grows exponentially with the number of shares as noise grows;
+  for 2 shares this is commonly summarised as roughly sigma^4 instead of sigma^2. So the
+  gap to the unmasked case grows like sigma^2 as noise grows (no absolute number is
+  claimed). Caveats: hardware glitches can make masked circuits leak at first order
+  (Mangard, Pramstaller, Oswald, CHES 2005); our post-processing (bias, ReLU, requantize)
+  is NOT masked, so hidden activations leak; masks reused across a batch break the
+  argument (see above).
+- For comparison, published masked NN accelerators report large costs: MaskedNet
+  (Dubey, Cammarota, Aysu, HOST 2020) reports 2.8x latency and 2.3x area; BoMaNet
+  (same authors, ICCAD 2020, fully Boolean-masked) reports 3.5% latency and 5.9x area on
+  a Spartan-6 FPGA. These are their numbers, on different designs, not comparable 1:1.
+
+References (existence and venue checked online; content summaries as noted):
+- S. Chari, C. Jutla, J. R. Rao, P. Rohatgi, "Towards Sound Approaches to Counteract
+  Power-Analysis Attacks", CRYPTO 1999, LNCS 1666 (exact scaling statement taken from
+  how it is commonly summarised; full text not re-read).
+- L. Goubin, "A Sound Method for Switching between Boolean and Arithmetic Masking",
+  CHES 2001, LNCS 2162, pp. 3-15.
+- S. Mangard, E. Oswald, T. Popp, "Power Analysis Attacks: Revealing the Secrets of
+  Smart Cards", Springer 2007 (shuffling/integration formulas; book section not re-read).
+- S. Mangard, N. Pramstaller, E. Oswald, "Successfully Attacking Masked AES Hardware
+  Implementations", CHES 2005, LNCS 3659, pp. 157-171.
+- N. Veyrat-Charvillon, M. Medwed, S. Kerckhof, F.-X. Standaert, "Shuffling against
+  Side-Channel Attacks: A Comprehensive Study with Cautionary Note", ASIACRYPT 2012.
+- A. Dubey, R. Cammarota, A. Aysu, "MaskedNet: The First Hardware Inference Engine Aiming
+  Power Side-Channel Protection", HOST 2020; and "BoMaNet: Boolean Masking of an Entire
+  Neural Network", ICCAD 2020 (overhead numbers from the abstracts).
+- L. Batina, S. Bhasin, D. Jap, S. Picek, "CSI NN: Reverse Engineering of Neural Network
+  Architectures Through Electromagnetic Side Channel", USENIX Security 2019.
+
+### Plots / tables
+- `results/phase3/sca_defense_cycles.png`, `results/phase3/sca_defense_random_bits.png`
+- `results/phase3/phase3_table.md`, `results/phase3/phase3_results.json`
+
+### Known problems / simplifications
+- Costs only: no leakage was simulated or measured for the defended accelerator.
+- Cycle numbers for the converter and permutation generator are assumptions.
+- The "in-PE refresh" row is a formula, not simulated.
+- Only the multiply step is masked; the shares' sum, bias, ReLU and requantization are
+  computed unmasked in the post-processing unit.
+- Random bits are counted, but the cost of a random number generator that can deliver
+  hundreds or thousands of bits per cycle is not modelled.
+
+### Three questions I should be able to answer
+1. Why does shuffling with one order per batch protect almost nothing inside a batch, and
+   why does a fresh order per image make 360 images about 22x slower in our array?
+2. Why do the masked shares need to be 32 bits wide, when the weights are only 8 bits?
+3. Why does masking force a second-order attack, and why does that help more when the
+   measurements are noisier?

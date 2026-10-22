@@ -94,6 +94,9 @@ def run_tile(W_tile, X_stream, w_mask=None):
 def matmul(X, W, check_row=None, check_latency=0):
     """Tiled matrix multiply X (M, K) int8 @ W (K, N) int8 -> (M, N) int32 on the array.
 
+    W may also be int32 (used for 32-bit masked weight shares in Phase 3); products and
+    partial sums then wrap modulo 2^32, exactly like 32-bit hardware registers.
+
     check_row(k, nt, row_values): optional checker called for every weight row as it loads
     (row k of the tile in tile-column nt). It returns either a bool (True = row is OK), or
     a tuple (status, row) for error-correcting checkers, where status is "ok", "corrected"
@@ -115,7 +118,7 @@ def matmul(X, W, check_row=None, check_latency=0):
         n0, n1 = nt * C, min((nt + 1) * C, N)
         for kt in range(kt_n):
             k0, k1 = kt * R, min((kt + 1) * R, K)
-            W_tile = np.zeros((R, C), dtype=np.int8)
+            W_tile = np.zeros((R, C), dtype=W.dtype)   # int8 normally; int32 for masked shares
             W_tile[: k1 - k0, : n1 - n0] = W[k0:k1, n0:n1]
             w_mask = np.zeros((R, C), dtype=bool)
             w_mask[: k1 - k0, : n1 - n0] = True

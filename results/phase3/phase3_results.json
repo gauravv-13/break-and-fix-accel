@@ -1,0 +1,108 @@
+{
+  "baseline_cycles": {
+    "batch1": 920,
+    "batch360": 15280
+  },
+  "shuffle_costs": {
+    "random_bits": 604,
+    "random_bits_min_log2_factorial": 553.1127323611616,
+    "perm_register_bits": 544,
+    "extra_cycles_if_not_overlapped": 138
+  },
+  "masking_register_costs": {
+    "extra_bits_per_pe": 88,
+    "extra_bits_array": 5632,
+    "multipliers_per_pe": "2 x (8x32) instead of 1 x (8x8)"
+  },
+  "convert_latency_per_tile_assumed": 2,
+  "options": [
+    {
+      "option": "no defense",
+      "fresh_randomness_per_image": "-",
+      "cycles_batch1": 920,
+      "cycles_batch360": 15280,
+      "random_bits_batch1": 0,
+      "random_bits_batch360": 0,
+      "extra_storage": "-",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "shuffle, one order per batch",
+      "fresh_randomness_per_image": "no (same order for all images in a batch)",
+      "cycles_batch1": 920,
+      "cycles_batch360": 15280,
+      "random_bits_batch1": 604,
+      "random_bits_batch360": 604,
+      "extra_storage": "544 bits permutation table",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "shuffle, new order per image",
+      "fresh_randomness_per_image": "yes (weights reload per image)",
+      "cycles_batch1": 920,
+      "cycles_batch360": 331200,
+      "random_bits_batch1": 604,
+      "random_bits_batch360": 217440,
+      "extra_storage": "544 bits permutation table",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "mask (2 multipliers per PE), masks per batch",
+      "fresh_randomness_per_image": "no (same masks for all images in a batch)",
+      "cycles_batch1": 1000,
+      "cycles_batch360": 15360,
+      "random_bits_batch1": 151552,
+      "random_bits_batch360": 151552,
+      "extra_storage": "+5632 bits in the array, 2 x (8x32) instead of 1 x (8x8); weight memory x2 (+18944 bits of shares)",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "mask (2 multipliers per PE), new masks per image",
+      "fresh_randomness_per_image": "yes (weights reload per image)",
+      "cycles_batch1": 1000,
+      "cycles_batch360": 360000,
+      "random_bits_batch1": 151552,
+      "random_bits_batch360": 54558720,
+      "extra_storage": "+5632 bits in the array, 2 x (8x32) instead of 1 x (8x8); weight memory x2 (+18944 bits of shares)",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "mask (1 widened multiplier, 2 passes), masks per batch",
+      "fresh_randomness_per_image": "no (same masks for all images in a batch)",
+      "cycles_batch1": 1920,
+      "cycles_batch360": 30640,
+      "random_bits_batch1": 151552,
+      "random_bits_batch360": 151552,
+      "extra_storage": "+24 bits weight register per PE (8 -> 32), 8x32 multiplier; weight memory x2 (+18944 bits of shares)",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "mask (1 widened multiplier, 2 passes), new masks per image",
+      "fresh_randomness_per_image": "yes (weights reload per image)",
+      "cycles_batch1": 1920,
+      "cycles_batch360": 691200,
+      "random_bits_batch1": 151552,
+      "random_bits_batch360": 54558720,
+      "extra_storage": "+24 bits weight register per PE (8 -> 32), 8x32 multiplier; weight memory x2 (+18944 bits of shares)",
+      "clean_acc": 0.9694444444444444,
+      "note": ""
+    },
+    {
+      "option": "mask (2 multipliers per PE), in-PE refresh per image [formula]",
+      "fresh_randomness_per_image": "yes (no reload; needs a refresh adder per share per PE)",
+      "cycles_batch1": 1000,
+      "cycles_batch360": 15360,
+      "random_bits_batch1": 151552,
+      "random_bits_batch360": 27355136,
+      "extra_storage": "+5632 bits in the array, 2 x (8x32) instead of 1 x (8x8); weight memory x2 (+18944 bits of shares); + refresh adders",
+      "clean_acc": 0.9694444444444444,
+      "note": "assumes the refresh fits in the PE cycle (no stall); needs up to 64 PEs x 32 = 2048 random bits per cycle while streaming"
+    }
+  ]
+}
