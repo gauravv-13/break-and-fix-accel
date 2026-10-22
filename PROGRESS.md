@@ -310,3 +310,69 @@ with no alarm; the other 17 raise an alarm. Accuracy after correction: median 84
    CRC-8 (about the same number of check bits) has the most?
 3. SECDED corrects 1 flip and detects 2. What goes wrong with 3 flips in one row, and why
    is "mis-corrected" worse than "detected"?
+
+---
+
+## Phase 2c (partial): keyed MAC defense module, no experiments (2026-10-22) - NOT FINISHED
+
+### Status, plainly
+- `src/defense_mac.py` is **built but untested**: there are no unit tests for it, and
+  **no MAC experiments were run** (no random-fault, same-row, false-alarm or attacker
+  measurements). It was only smoke-run once to check that it imports and runs.
+- The planned five-defense comparison table and plots were **not made**.
+- Work stopped because my responses were halted three times by a safety filter while
+  writing the MAC experiment code, so I did not continue that part.
+
+### What was built
+- `src/defense_mac.py`: a truncated MAC per weight row. tag = first t bits (t = 8 or 16)
+  of AES-CMAC(key, address || row bytes), where address = (layer, k, nt). HMAC-SHA256 is
+  an option. Uses the `cryptography` library (added to `requirements.txt`). The key comes
+  from a fixed seed (2026) for reproducibility; a real chip would use a secret random key.
+- `src/defense_checksum.py`: the base class now has `encode_at(layer, k, nt, row)`, so a
+  code can depend on the row's address (needed by the MAC). Parity, CRC-8 and SECDED
+  behave exactly as before; the full suite (47 tests) still passes.
+- Cost assumptions written in the module (not measured): one AES-128 block per row,
+  1 round per cycle, + 1 cycle to compare = 11 cycles per row. A pipelined engine adds
+  11 cycles per tile (40 tiles per inference = +440 cycles); a one-row-at-a-time engine
+  would add 8 x 11 - 8 = 80 cycles per tile. HMAC-SHA256 (2 SHA-256 compressions,
+  64 rounds each) would be 130 cycles per row. Memory: 8 bits/row = 2,560 bits (13.5% of
+  the 18,944 weight bits), 16 bits/row = 5,120 bits (27.0%).
+
+### Worked math (ANALYTICAL, not measured)
+- With a good t-bit MAC and a key the attacker does not know, any change to a row gives a
+  tag that looks random, so the changed row passes the check with probability 2^-t:
+  1/256 for t = 8, 1/65,536 for t = 16.
+- If an attack changes r different rows, all of them pass at once with probability
+  2^-(t*r). Example: r = 10 rows with t = 8 gives 2^-80.
+- If an attacker could retry after each alarm, the number of tries until one row passes
+  is geometric with success chance p = 2^-t, so on average 1/p = 2^t tries per row:
+  about 256 tries (t = 8) or 65,536 tries (t = 16), each failed try raising an alarm.
+- This is why an alarm must trigger a response. If the system ignores alarms, a short
+  tag only slows a patient attacker down; if it reloads the weights or stops after a few
+  alarms, the attacker gets only a handful of tries instead of 2^t.
+
+### Future work
+- Alarm response: model what happens on an alarm (reload clean weights, or stop the
+  accelerator after a few alarms) and measure its cost.
+- Unit tests for `defense_mac.py`, and the MAC measurements under the same random-fault
+  seeds as Phase 2b, plus the five-defense comparison table.
+
+### RISC-V note: speeding up the MAC check
+Each row check is one AES-128 block (CMAC). If a small RISC-V control core did this in
+software on plain RV32I, every AES round needs many table lookups, XORs and shifts, so the
+check would cost far more than the 11 cycles assumed above. Two ways to speed it up:
+- A custom AES-round instruction (like my `aes_round64.v` idea in PLAN.md Phase 4), or
+  the standard RISC-V scalar crypto extension for AES (Zkne), cuts each round to a few
+  instructions.
+- A small dedicated AES engine beside the accelerator (the 11-cycles-per-row assumption
+  above) takes the check off the core completely.
+The real instruction counts for software AES vs the AES-round instruction will come from
+`results/rv32i/` once the AES/RV32I track is merged; they are not available on this
+branch yet, so no numbers are claimed here.
+
+### Three questions I should be able to answer
+1. Why can't an attacker who doesn't know the key find flips the MAC can't see, when it
+   could for parity, CRC-8 and SECDED?
+2. With an 8-bit tag, why is the chance of one changed row passing 1/256, and why does
+   changing 10 rows make it 2^-80?
+3. Why does a MAC only help if the system responds to alarms?

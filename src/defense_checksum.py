@@ -81,22 +81,26 @@ class RowCodeChecker:
     """Base class: one stored code word (an int) per weight row.
 
     Subclasses define encode(row) -> int, bits_for_row(n_bytes) and bit_syndromes(n_bytes).
+    A code that also depends on WHERE the row lives (the keyed MAC) overrides encode_at.
     """
     check_latency = 1
 
     def _store(self, clean_weights):
         self.keys = [(l, k, nt) for l, k, nt, _ in rows(clean_weights)]
         self.widths = [self.bits_for_row(len(r)) for _, _, _, r in rows(clean_weights)]
-        self.stored = {(l, k, nt): self.encode(r) for l, k, nt, r in rows(clean_weights)}
+        self.stored = {(l, k, nt): self.encode_at(l, k, nt, r) for l, k, nt, r in rows(clean_weights)}
+
+    def encode_at(self, layer, k, nt, row):
+        return self.encode(row)
 
     def decode_row(self, layer, k, nt, row):
         """Return (status, row_to_load). Detection-only codes never change the row."""
-        ok = self.encode(row) == self.stored[(layer, k, nt)]
+        ok = self.encode_at(layer, k, nt, row) == self.stored[(layer, k, nt)]
         return ("ok" if ok else "detected"), row
 
     def check_row(self, layer, k, nt, row):
         """Called by the accelerator as each weight row loads. True = row is OK."""
-        return self.encode(row) == self.stored[(layer, k, nt)]
+        return self.encode_at(layer, k, nt, row) == self.stored[(layer, k, nt)]
 
     def count_bad_rows(self, weights):
         """Check every row directly (same check as the accelerator, without running it)."""
